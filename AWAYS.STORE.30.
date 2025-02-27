@@ -1,81 +1,132 @@
--- Script (ServerScriptService)
+-- LocalScript (StarterPlayer > StarterCharacterScripts)
 
-local DataStoreService = game:GetService("DataStoreService")
-local staffDataStore = DataStoreService:GetDataStore("StaffList")
-local staffList = {} -- Tabela para guardar os UsersIds
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
-local function carregarStaff()
-    local success, errorMessage = pcall(function()
-       staffList = staffDataStore:GetAsync("staff") or {}
-    end)
+-- Configurações
+local velocidadeVoo = 50 -- Velocidade de voo
+local UI_Scale = 0.6 -- Ajustar a escala da interface do usuário
+local estaVoando = false -- Variável para controlar o modo de voo
+local podeVoar = true --Variável para controlar se pode ou não voar
 
-    if not success then
-        warn("Erro ao carregar os Staffs" .. errorMessage)
-    end
-end
+-- Detecção de tipo de dispositivo
+local isMobile = RunService:IsStudio() and false or UserInputService.TouchEnabled
 
---Comandos para adicionar ou remover Staffs (exemplo)
-local function adicionarStaff(userId)
-    if not table.find(staffList, userId) then
-       table.insert(staffList, userId)
-       salvarStaff()
-       print("Staff Adicionado")
-    else
-        print("Staff já é um Staff")
-    end
-end
+-- Criação da Interface do Usuário (UI)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FlyUI"
+screenGui.Parent = LocalPlayer.PlayerGui
+screenGui.IgnoreGuiInset = true
 
-local function removerStaff(userId)
-    if table.find(staffList, userId) then
-       table.remove(staffList, table.find(staffList, userId))
-       salvarStaff()
-       print("Staff Removido")
-    else
-       print("Staff não é um Staff")
-    end
-end
+local flyButton = Instance.new("TextButton")
+flyButton.Size = UDim2.new(0, 100 * UI_Scale, 0, 40 * UI_Scale)
+flyButton.Position = UDim2.new(0.05, 0, 0.9, 0)
+flyButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+flyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+flyButton.Text = "Fly: Desativado"
+flyButton.TextScaled = true
+flyButton.Font = Enum.Font.SourceSansBold
+flyButton.Parent = screenGui
 
-local function salvarStaff()
-    local success, errorMessage = pcall(function()
-        staffDataStore:SetAsync("staff", staffList)
-    end)
-
-    if not success then
-        warn("Erro ao salvar os Staffs" .. errorMessage)
-    end
-end
-
--- Função para detectar quando um jogador entra e define o atributo IsStaff
-local function onPlayerAdded(player)
-    if player:IsA("Player") then
-        local userId = player.UserId
-        local isStaff = table.find(staffList, userId) ~= nil
-
-        if not player:HasAttribute("IsStaff") or player:GetAttribute("IsStaff") ~= isStaff then
-            player:SetAttribute("IsStaff", isStaff)
-        end
-
-        --Monitora futuras mudanças no atributo IsStaff
-        player:GetAttributeChangedSignal("IsStaff"):Connect(function()
-            local currentIsStaff = player:GetAttribute("IsStaff")
-            if currentIsStaff ~= isStaff then
-                isStaff = currentIsStaff
+--Função para limitar o uso da ferramenta.
+local function checkToolEquipped()
+    local character = LocalPlayer.Character
+    if character then
+      local humanoid = character:FindFirstChild("Humanoid")
+        if humanoid then
+            if humanoid.RigType == Enum.HumanoidRigType.R15 then
+                local toolEquipped = humanoid:GetPlayingAnimationTracks()
+                 if toolEquipped then
+                   podeVoar = false
+                 else
+                    podeVoar = true
+                end
+            else
+                podeVoar = true
             end
-        end)
+        end
     end
 end
 
--- Conectando ao evento de entrada do jogador
-game.Players.PlayerAdded:Connect(onPlayerAdded)
+-- Função para ativar ou desativar o modo de voo
+local function toggleFly()
+    if not podeVoar then
+      print("Você não pode voar enquanto usa uma ferramenta.")
+      return
+    end
 
--- Para jogadores que já estão no servidor quando o script é iniciado
-for _, player in ipairs(game.Players:GetPlayers()) do
-    onPlayerAdded(player)
+    estaVoando = not estaVoando
+    if estaVoando then
+        flyButton.Text = "Fly: Ativado"
+        print("Modo Fly ativado.")
+    else
+        flyButton.Text = "Fly: Desativado"
+        print("Modo Fly desativado.")
+    end
 end
 
--- Salvar a lista quando o servidor for desligado (opcional)
-game:BindToClose(function()
-  salvarStaff()
+-- Conectar o botão à função toggleFly
+flyButton.MouseButton1Click:Connect(toggleFly)
+
+-- Função para mover o personagem durante o voo
+local function moveCharacter(direction)
+    if estaVoando then
+        local character = LocalPlayer.Character
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            character.HumanoidRootPart.Velocity = direction * velocidadeVoo
+        end
+    end
+end
+
+-- Controles de voo
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if gameProcessedEvent then return end -- Ignorar entrada se o jogo já a processou
+
+    if estaVoando then
+        if input.KeyCode == Enum.KeyCode.W then
+            moveCharacter(Camera.CFrame.LookVector)
+        elseif input.KeyCode == Enum.KeyCode.S then
+            moveCharacter(-Camera.CFrame.LookVector)
+        elseif input.KeyCode == Enum.KeyCode.A then
+            moveCharacter(-Camera.CFrame.RightVector)
+        elseif input.KeyCode == Enum.KeyCode.D then
+            moveCharacter(Camera.CFrame.RightVector)
+        elseif input.KeyCode == Enum.KeyCode.Space then
+            moveCharacter(Vector3.new(0, 1, 0)) -- Voar para cima
+        elseif input.KeyCode == Enum.KeyCode.LeftControl then
+            moveCharacter(Vector3.new(0, -1, 0)) -- Voar para baixo
+        end
+    end
 end)
 
-carregarStaff() -- Carrega os Staffs na inicialização do servidor
+UserInputService.InputEnded:Connect(function(input, gameProcessedEvent)
+    if gameProcessedEvent then return end
+
+    if estaVoando then
+        if input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.S or
+           input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.D or
+           input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.LeftControl then
+            moveCharacter(Vector3.new(0, 0, 0)) -- Parar o movimento
+        end
+    end
+end)
+
+--Atualiza se a ferramenta está ativada ou n.
+local function ferramentaEquipada()
+    checkToolEquipped()
+end
+
+-- Detecta quando uma ferramenta é selecionada ou desselecionada
+LocalPlayer.CharacterAdded:Connect(function(character)
+    character.ChildAdded:Connect(ferramentaEquipada)
+    character.ChildRemoved:Connect(ferramentaEquipada)
+end)
+
+if LocalPlayer.Character then
+    LocalPlayer.Character.ChildAdded:Connect(ferramentaEquipada)
+    LocalPlayer.Character.ChildRemoved:Connect(ferramentaEquipada)
+end
+
+print("Script de Fly carregado. Clique no botão para ativar/desativar.")
